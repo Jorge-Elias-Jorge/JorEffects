@@ -58,7 +58,7 @@ public class MainActivity extends Activity {
 
         // Safe landscape orientation enforcement
         try {
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         } catch (Exception e) {
             Log.w(TAG, "Orientation request ignored: " + e.getMessage());
         }
@@ -70,6 +70,7 @@ public class MainActivity extends Activity {
 
         webView = findViewById(R.id.webview);
         btnFloatingKeyboard = findViewById(R.id.btn_floating_keyboard);
+        btnFloatingKeyboard.setVisibility(View.GONE);
 
         setupWebView();
         setupFloatingButton();
