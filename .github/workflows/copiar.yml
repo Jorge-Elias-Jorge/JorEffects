@@ -1,4 +1,4 @@
-name: Copiar e gerar APK
+name: Copiar, aplicar interface e gerar APK
 on:
   workflow_dispatch:
 permissions:
@@ -8,17 +8,232 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Copiar o repositório original para este
+      - name: Copiar o repositório original
         run: |
           git clone --depth 1 https://github.com/duplexspy/effectscraft-unofficial-mobile-port /tmp/origem
           rm -rf /tmp/origem/.git /tmp/origem/.github
           cp -a /tmp/origem/. .
           sed -i '/aapt2FromMavenOverride/d' packaging/android/gradle.properties
           sed -i '/localMvnRepository/d' packaging/android/build.gradle
+      - name: Aplicar a interface vertical (estilo CapCut + IA)
+        run: |
+          W=packaging/android/app/src/main/assets/web
+          A=packaging/android/app/src/main
+          cat > $W/cc.css << 'EOFCC'
+          #effectcraft_canvas{opacity:0!important;pointer-events:none!important;z-index:0}
+          #loading{z-index:5}
+          #cc{position:fixed;inset:0;z-index:10;display:none;flex-direction:column;background:#0e0f12;color:#eee;font:14px system-ui,sans-serif;user-select:none;-webkit-tap-highlight-color:transparent}
+          #cc.on{display:flex}
+          #cc button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+          .cc-top{display:flex;align-items:center;gap:8px;padding:10px 12px;padding-top:max(10px,env(safe-area-inset-top))}
+          .cc-top b{flex:1;font-size:15px}
+          .cc-btn{background:#1f2128;border-radius:10px;padding:8px 12px}
+          .cc-pri{background:#19c3a6!important;color:#04221d!important;font-weight:700}
+          .cc-prev{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#000;position:relative}
+          .cc-prev img{max-width:100%;max-height:100%;object-fit:contain;display:block}
+          .cc-tr{display:flex;align-items:center;gap:10px;padding:8px 12px}
+          .cc-tr input[type=range]{flex:1}
+          .cc-tr span{font-variant-numeric:tabular-nums;font-size:12px;color:#9aa}
+          .cc-tl{height:112px;overflow-y:auto;background:#15161a;padding:6px 8px;position:relative}
+          .cc-lay{position:relative;height:28px;margin:3px 0;background:#1d1f25;border-radius:6px}
+          .cc-lay i{position:absolute;top:0;bottom:0;border-radius:6px;background:#3b4a63;font-style:normal;font-size:12px;line-height:28px;padding:0 8px;overflow:hidden;white-space:nowrap}
+          .cc-lay.sel i{background:#19c3a6;color:#04221d;font-weight:600}
+          .cc-head{position:absolute;top:0;bottom:0;width:2px;background:#fff;pointer-events:none}
+          .cc-bar{display:flex;overflow-x:auto;gap:2px;padding:8px 6px;padding-bottom:max(8px,env(safe-area-inset-bottom));background:#0e0f12;border-top:1px solid #23252c}
+          .cc-bar button{flex:0 0 auto;min-width:64px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 8px;border-radius:10px;font-size:11px;color:#c9ccd3}
+          .cc-bar button span{font-size:22px;line-height:1}
+          .cc-bar button:active{background:#1f2128}
+          .cc-bar button.ia{color:#19c3a6}
+          #cc-sheet{position:absolute;left:0;right:0;bottom:0;max-height:72%;overflow-y:auto;background:#1a1c22;border-radius:18px 18px 0 0;padding:14px 14px max(16px,env(safe-area-inset-bottom));box-shadow:0 -8px 30px #000a;display:none;z-index:3}
+          #cc-sheet.on{display:block}
+          #cc-sheet h3{margin:0 0 10px;font-size:15px;display:flex;justify-content:space-between;align-items:center}
+          #cc-sheet label{display:block;margin:10px 0 4px;font-size:12px;color:#9aa}
+          #cc-sheet input[type=text],#cc-sheet input[type=password],#cc-sheet textarea,#cc-sheet select{width:100%;box-sizing:border-box;background:#0e0f12;color:#eee;border:1px solid #2b2e37;border-radius:10px;padding:10px;font:inherit}
+          #cc-sheet input[type=range]{width:100%}
+          #cc-sheet input[type=color]{width:56px;height:38px;border:0;background:none}
+          .cc-row{display:flex;gap:8px;flex-wrap:wrap}
+          .cc-chip{background:#262932;border-radius:999px;padding:8px 14px}
+          .cc-list{max-height:34vh;overflow-y:auto;margin-top:8px}
+          .cc-list button{display:block;width:100%;text-align:left;padding:10px;border-bottom:1px solid #262932}
+          .cc-log{white-space:pre-wrap;font-size:12px;color:#9aa;margin-top:8px;max-height:20vh;overflow-y:auto}
+          .cc-toast{position:absolute;left:50%;transform:translateX(-50%);bottom:130px;background:#000c;padding:8px 14px;border-radius:999px;font-size:13px;z-index:4;pointer-events:none}
+          #ec-floating-kb-btn,#ec-keyboard-container{display:none!important}
+          EOFCC
+          cat > $W/cc.js << 'EOFCC'
+          // Interface vertical estilo CapCut sobre o motor do EffectCraft (window.effectcraft).
+          (() => {
+            const $ = (s, r = document) => r.querySelector(s);
+            const E = () => window.effectcraft;
+            const ex = (c, p) => E().execute(c, p || {});
+            const S = { info: null, t: 0, sel: null, playing: false, W: 1080, H: 1920, ia: 0, effects: null };
+            const store = { get: k => { try { return localStorage.getItem(k) || ''; } catch (_) { return ''; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} } };
+            const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+            const root = document.createElement('div'); root.id = 'cc';
+            root.innerHTML = `<div class="cc-top"><b>Animação</b><button class="cc-btn" id="cc-undo">↶</button><button class="cc-btn" id="cc-redo">↷</button><button class="cc-btn cc-pri" id="cc-exp">Exportar</button></div>
+            <div class="cc-prev"><img id="cc-img" alt=""></div>
+            <div class="cc-tr"><button class="cc-btn" id="cc-play">▶</button><input type="range" id="cc-scrub" min="0" max="1000" value="0"><span id="cc-time">0.0 / 0.0</span></div>
+            <div class="cc-tl" id="cc-tl"></div>
+            <div class="cc-bar" id="cc-bar"></div>
+            <div id="cc-sheet"></div><div class="cc-toast" id="cc-toast" style="display:none"></div>`;
+            document.body.appendChild(root);
+            const toast = (m, ms = 2200) => { const t = $('#cc-toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', ms); };
+            const dur = () => (S.info && S.info.duration) || 8;
+
+            let drawing = false, again = false;
+            async function draw() {
+              if (drawing) { again = true; return; }
+              drawing = true;
+              try { const r = await E().renderFrame({ time: S.t, max_side: 720 }); if (r && r.png) $('#cc-img').src = 'data:image/png;base64,' + r.png; }
+              catch (e) { console.warn('draw', e); }
+              drawing = false; if (again) { again = false; draw(); }
+            }
+            function ui() {
+              $('#cc-scrub').value = Math.round(S.t / dur() * 1000);
+              $('#cc-time').textContent = S.t.toFixed(1) + ' / ' + dur().toFixed(1);
+              const tl = $('#cc-tl'); const d = dur();
+              tl.innerHTML = (S.info.layers || []).map(l => `<div class="cc-lay ${S.sel === l.id ? 'sel' : ''}" data-id="${l.id}"><i style="left:${l.in / d * 100}%;width:${Math.max(4, (l.out - l.in) / d * 100)}%">${esc(l.name)}</i></div>`).join('') + `<div class="cc-head" style="left:calc(8px + ${S.t / d} * (100% - 16px))"></div>`;
+              tl.querySelectorAll('.cc-lay').forEach(el => el.onclick = () => select(+el.dataset.id));
+            }
+            async function refresh(redraw = true) {
+              S.info = await ex('comp.info');
+              S.W = S.info.width; S.H = S.info.height;
+              if (S.sel && !(S.info.layers || []).some(l => l.id === S.sel)) S.sel = null;
+              ui(); if (redraw) draw();
+            }            async function select(id) { S.sel = id; try { await ex('layer.select', { layers: [id] }); } catch (_) {} ui(); }
+            const selLayer = () => (S.info.layers || []).find(l => l.id === S.sel);
+            const need = () => { if (!S.sel) { toast('Toque numa camada da linha do tempo'); return false; } return true; };
+            async function run(fn, ok) { try { const r = await fn(); await refresh(); if (ok) toast(ok); return r; } catch (e) { toast('Erro: ' + String(e.message || e).slice(0, 120), 4000); console.warn(e); } }
+
+            // ---- folha inferior
+            const sheet = $('#cc-sheet');
+            function open(title, html, bind) {
+              sheet.innerHTML = `<h3>${title}<button class="cc-btn" id="cc-x">✕</button></h3>${html}`; sheet.classList.add('on');
+              $('#cc-x').onclick = close; if (bind) bind(sheet);
+            }
+            function close() { sheet.classList.remove('on'); sheet.innerHTML = ''; }
+
+            const tools = [
+              ['🔤', 'Texto', () => open('Texto', `<label>Texto</label><input type="text" id="t1" value="Seu texto"><label>Tamanho: <span id="t2v">120</span></label><input type="range" id="t2" min="30" max="400" value="120"><label>Cor</label><input type="color" id="t3" value="#ffffff"><div class="cc-row" style="margin-top:14px"><button class="cc-btn cc-pri" id="ok">Adicionar</button><button class="cc-btn" id="ed">Editar texto da camada</button></div>`, s => {
+                $('#t2').oninput = () => $('#t2v').textContent = $('#t2').value;
+                $('#ok').onclick = () => run(() => ex('layer.newText', { text: $('#t1').value, size: +$('#t2').value, fill: $('#t3').value, position: [S.W / 2, S.H / 2] }), 'Texto adicionado');
+                $('#ed').onclick = () => need() && run(() => ex('layer.setText', { layer: S.sel, text: $('#t1').value, size: +$('#t2').value, fill: $('#t3').value }), 'Texto alterado');
+              })],
+              ['⬛', 'Forma', () => open('Forma', `<div class="cc-row">${[['rect', 'Retângulo'], ['rounded', 'Arredondado'], ['ellipse', 'Círculo'], ['star', 'Estrela'], ['polygon', 'Polígono']].map(k => `<button class="cc-chip" data-k="${k[0]}">${k[1]}</button>`).join('')}</div><label>Cor</label><input type="color" id="c1" value="#ffcc00"><label>Tamanho: <span id="sv">400</span></label><input type="range" id="sz" min="50" max="1200" value="400">`, s => {
+                $('#sz').oninput = () => $('#sv').textContent = $('#sz').value;
+                s.querySelectorAll('[data-k]').forEach(b => b.onclick = () => run(() => ex('layer.newShape', { kind: b.dataset.k, size: [+$('#sz').value, +$('#sz').value], fill: $('#c1').value, position: [S.W / 2, S.H / 2] }), 'Forma adicionada'));
+              })],
+              ['🎨', 'Fundo', () => open('Cor do fundo', `<input type="color" id="bg" value="#101820"><div class="cc-row" style="margin-top:12px"><button class="cc-btn cc-pri" id="ok">Aplicar</button></div>`, s => $('#ok').onclick = () => run(() => ex('comp.settings', { background: $('#bg').value }), 'Fundo alterado'))],
+              ['🖼', 'Mídia', () => open('Imagem ou vídeo', `<input type="file" id="f" accept="image/*,video/*,audio/*"><div class="cc-log" id="lg"></div>`, s => $('#f').onchange = async ev => {
+                const f = ev.target.files[0]; if (!f) return; $('#lg').textContent = 'Importando…';
+                try { const name = await E().addFile(f); const path = (typeof name === 'string' && name) || f.name;
+                  await ex('file.import', { paths: [path], addToComp: true }); await refresh(); close(); toast('Mídia adicionada');
+                } catch (e) { $('#lg').textContent = 'Erro: ' + (e.message || e); }
+              })],
+              ['✨', 'Efeitos', async () => {
+                if (!S.effects) { try { S.effects = (await ex('effect.list')).map(e => ({ id: e.id, name: e.name, cat: e.category })); } catch (e) { return toast('Erro nos efeitos'); } }
+                open('Efeitos', `<input type="text" id="q" placeholder="Buscar (ex.: blur, glow, cor)"><div class="cc-list" id="ls"></div>`, s => {
+                  const show = () => { const q = $('#q').value.toLowerCase(); $('#ls').innerHTML = S.effects.filter(e => !q || (e.name + e.cat).toLowerCase().includes(q)).slice(0, 60).map(e => `<button data-id="${esc(e.id)}">${esc(e.name)} <small style="color:#789">${esc(e.cat)}</small></button>`).join('');
+                    $('#ls').querySelectorAll('button').forEach(b => b.onclick = () => need() && run(() => ex('effect.apply', { effect: b.dataset.id, layers: [S.sel] }), 'Efeito aplicado')); };
+                  $('#q').oninput = show; show();
+                });
+              }],
+              ['🎚', 'Ajustar', () => { if (!need()) return; open('Ajustar camada', ['Opacidade|opacity|0|100|100', 'Escala|scale|10|400|100', 'Rotação|rotation|-180|180|0'].map(x => { const [n, k, a, b, v] = x.split('|'); return `<label>${n}: <span id="${k}v">${v}</span></label><input type="range" id="${k}" min="${a}" max="${b}" value="${v}">`; }).join('') + `<label>Posição X: <span id="pxv">50</span>%</label><input type="range" id="px" min="-20" max="120" value="50"><label>Posição Y: <span id="pyv">50</span>%</label><input type="range" id="py" min="-20" max="120" value="50">`, s => {
+                const set = (path, val) => ex('prop.set', { layer: S.sel, path: 'transform/' + path, value: val }).then(() => draw());
+                $('#opacity').oninput = e => { $('#opacityv').textContent = e.target.value; set('opacity', +e.target.value); };
+                $('#scale').oninput = e => { $('#scalev').textContent = e.target.value; set('scale', [+e.target.value, +e.target.value, 100]); };
+                $('#rotation').oninput = e => { $('#rotationv').textContent = e.target.value; set('rotation', +e.target.value); };
+                const pos = () => { $('#pxv').textContent = $('#px').value; $('#pyv').textContent = $('#py').value; set('position', [$('#px').value / 100 * S.W, $('#py').value / 100 * S.H, 0]); };
+                $('#px').oninput = pos; $('#py').oninput = pos;
+              }); }],
+              ['🎬', 'Animar', () => { if (!need()) return; const L = selLayer(); const t0 = Math.max(S.t, L ? L.in : 0);
+                const P = { 'Aparecer (fade)': [['opacity', 0, 0], ['opacity', 100, 1]], 'Sumir (fade)': [['opacity', 100, 0], ['opacity', 0, 1]], 'Zoom in': [['scale', [60, 60, 100], 0], ['scale', [100, 100, 100], 1]], 'Pulsar': [['scale', [100, 100, 100], 0], ['scale', [115, 115, 100], 0.4], ['scale', [100, 100, 100], 0.8]], 'Girar': [['rotation', 0, 0], ['rotation', 360, 2]] };
+                open('Animação (a partir de ' + t0.toFixed(1) + 's)', `<div class="cc-row">${Object.keys(P).map(k => `<button class="cc-chip" data-k="${k}">${k}</button>`).join('')}</div>`, s => s.querySelectorAll('[data-k]').forEach(b => b.onclick = () => run(async () => { for (const [path, v, dt] of P[b.dataset.k]) await ex('prop.addKey', { layer: S.sel, path: 'transform/' + path, time: t0 + dt, value: v }); }, 'Animação aplicada')));
+              }],
+              ['⧉', 'Duplicar', () => need() && run(() => ex('edit.duplicate', { layers: [S.sel] }), 'Duplicada')],
+              ['✂', 'Dividir', () => need() && run(() => ex('edit.splitLayer', {}), 'Dividida no tempo atual')],
+              ['🗑', 'Apagar', () => need() && run(async () => { await ex('layer.select', { layers: [S.sel] }); await ex('edit.delete'); S.sel = null; }, 'Apagada')],
+              ['🤖', 'IA', () => iaSheet(), 'ia'],
+            ];
+            const bar = $('#cc-bar');
+            tools.forEach(t => { const b = document.createElement('button'); if (t[3]) b.className = t[3]; b.innerHTML = `<span>${t[0]}</span>${t[1]}`; b.onclick = t[2]; bar.appendChild(b); });
+
+            // ---- IA (Groq)
+            const CMDS = ['comp.settings', 'layer.newText', 'layer.newShape', 'layer.newSolid', 'layer.setText', 'layer.select', 'layer.rename', 'layer.timing', 'prop.set', 'prop.addKey', 'effect.apply', 'edit.delete', 'edit.duplicate', 'edit.splitLayer', 'layer.setBlendMode'];
+            let allCmds = null;
+            async function catalog() {
+              if (!allCmds) allCmds = await E().commands();
+              const ids = new Set(allCmds.map(c => c.id));
+              const doc = CMDS.map(id => { const c = allCmds.find(x => x.id === id); return c ? `${id} ${String(c.params || '').slice(0, 230)}` : ''; }).filter(Boolean).join('\n');
+              return { ids, doc };
+            }
+            function iaSheet() {
+              open('IA (Groq)', `<label>Chave do Groq (fica só neste celular)</label><input type="password" id="k" placeholder="gsk_..." value="${esc(store.get('groq_key'))}"><label>Modelo</label><input type="text" id="m" value="${esc(store.get('groq_model') || 'openai/gpt-oss-120b')}"><label>O que você quer criar ou mudar?</label><textarea id="p" rows="3" placeholder="Ex.: título 'Motor a Jato' grande no topo, fundo azul escuro e um círculo laranja no meio"></textarea><div class="cc-row" style="margin-top:12px"><button class="cc-btn cc-pri" id="go">Enviar</button><button class="cc-btn" id="un">Desfazer o da IA</button></div><div class="cc-log" id="lg"></div>`, s => {
+                const log = t => $('#lg').textContent = t;
+                $('#un').onclick = async () => { const n = S.ia; S.ia = 0; for (let i = 0; i < n; i++) await ex('edit.undo'); await refresh(); log('Desfeito: ' + n + ' passo(s).'); };
+                $('#go').onclick = async () => {
+                  const key = $('#k').value.trim(), model = $('#m').value.trim(), ask = $('#p').value.trim();
+                  if (!key || !ask) return log('Preencha a chave e o pedido.');
+                  store.set('groq_key', key); store.set('groq_model', model); log('Pensando…');
+                  try {
+                    const { ids, doc } = await catalog(); await refresh(false);
+                    const st = `Composição ${S.W}x${S.H}px, ${dur()}s, camadas: ` + ((S.info.layers || []).map(l => `{id:${l.id},nome:"${l.name}",tipo:${l.type}}`).join(', ') || 'nenhuma') + `. Camada selecionada: ${S.sel || 'nenhuma'}. Tempo atual: ${S.t.toFixed(1)}s.`;
+                    const sys = `Você controla um editor de animações por comandos JSON. Responda SOMENTE com JSON: {"explicacao":"curta, em português","comandos":[{"command":"id","params":{...}}]}. Use APENAS estes comandos e só os parâmetros listados; não invente nomes. Coordenadas em pixels da composição (origem no canto superior esquerdo). Cores em #hex. Camadas pelo número id. Em prop.set/prop.addKey o path é "transform/opacity" (0-100), "transform/position" ([x,y,0]), "transform/scale" ([%,%,100]) ou "transform/rotation" (graus). Se faltar informação ou não der para fazer com estes comandos, devolva comandos vazios e explique.\nCOMANDOS:\n${doc}`;
+                    const r = await fetch('https://api.groq.com/openai/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key }, body: JSON.stringify({ model, temperature: 0.2, max_tokens: 1500, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: sys }, { role: 'user', content: st + '\nPedido: ' + ask }] }) });
+                    if (!r.ok) throw new Error('Groq ' + r.status + ': ' + (await r.text()).slice(0, 200));
+                    const out = JSON.parse((await r.json()).choices[0].message.content);
+                    const cmds = Array.isArray(out.comandos) ? out.comandos : [];
+                    const bad = cmds.filter(c => !c || !ids.has(c.command) || !CMDS.includes(c.command));
+                    if (bad.length) return log('A IA pediu comandos que não existem ou não são permitidos: ' + bad.map(b => b && b.command).join(', ') + '. Nada foi alterado. Tente descrever de outro jeito.');
+                    let done = 0; S.ia = 0;
+                    for (const c of cmds) { try { await ex(c.command, c.params || {}); done++; S.ia++; } catch (e) { log((out.explicacao || '') + '\n\nParou no passo ' + (done + 1) + ' (' + c.command + '): ' + (e.message || e)); await refresh(); return; } }
+                    await refresh(); log((out.explicacao || 'Pronto.') + '\n\n' + done + ' passo(s) aplicados.');
+                  } catch (e) { log('Erro: ' + (e.message || e)); }
+                };
+              });
+            }
+
+            // ---- exportar
+            $('#cc-exp').onclick = () => open('Exportar', `<div class="cc-row"><button class="cc-btn cc-pri" id="png">Salvar quadro atual (PNG)</button><button class="cc-btn" id="mp4">Gerar vídeo MP4</button></div><div class="cc-log" id="lg"></div>`, s => {
+              const log = t => $('#lg').textContent = t;
+              const save = (bytes, name, type) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([bytes], { type })); a.download = name; document.body.appendChild(a); a.click(); a.remove(); };
+              $('#png').onclick = async () => { const r = await E().renderFrame({ time: S.t }); const b = atob(r.png), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); save(u, 'quadro.png', 'image/png'); log('Quadro salvo.'); };
+              $('#mp4').onclick = async () => { log('Renderizando… pode demorar.'); try {
+                await ex('renderQueue.add', { format: 'h264', output: 'animacao.mp4', timeSpan: 'comp' }); await ex('renderQueue.render', { wait: true });
+                const f = (await E().files()).find(x => /animacao.*\.mp4$/i.test(x.path)); if (!f) throw new Error('arquivo de saída não encontrado');
+                save(await E().readFile(f.path), 'animacao.mp4', 'video/mp4'); log('Vídeo gerado: ' + f.path);
+              } catch (e) { log('Erro ao gerar vídeo: ' + (e.message || e)); } };
+            });
+
+            // ---- reprodução e controles
+            $('#cc-scrub').oninput = e => { S.t = e.target.value / 1000 * dur(); ui(); draw(); };
+            $('#cc-undo').onclick = () => run(() => ex('edit.undo'));
+            $('#cc-redo').onclick = () => run(() => ex('edit.redo'));
+            $('#cc-play').onclick = () => { S.playing = !S.playing; $('#cc-play').textContent = S.playing ? '⏸' : '▶'; if (S.playing) { let last = performance.now(); (function tick(now) { if (!S.playing) return; S.t += (now - last) / 1000; last = now; if (S.t >= dur()) S.t = 0; ui(); draw(); requestAnimationFrame(tick); })(last); } };
+
+            // ---- início
+            (async function boot() {
+              for (let i = 0; i < 400; i++) { try { if (E()) { await ex('project.summary'); break; } } catch (_) {} await new Promise(r => setTimeout(r, 300)); }
+              try {
+                await ex('comp.new', { name: 'Animação', width: 1080, height: 1920, frameRate: 30, duration: 8, background: '#101820' });
+                await refresh(); root.classList.add('on'); const l = $('#loading'); if (l) l.style.display = 'none';
+              } catch (e) { console.warn('cc boot', e); }
+            })();
+            window.ccApp = S;
+          })();
+          EOFCC
+          sed -i 's|<link rel="stylesheet" href="keyboard.css">|<link rel="stylesheet" href="keyboard.css"><link rel="stylesheet" href="cc.css">|' $W/index.html
+          sed -i '0,/<\/body>/s|</body>|<script src="cc.js"></script></body>|' $W/index.html
+          sed -i 's|"./keyboard.css",|"./keyboard.css", "./cc.css", "./cc.js",|' $W/sw.js
+          sed -i 's|sensorLandscape|portrait|; s|adjustNothing|adjustResize|' $A/AndroidManifest.xml
+          sed -i 's|SCREEN_ORIENTATION_SENSOR_LANDSCAPE|SCREEN_ORIENTATION_PORTRAIT|' $A/java/ai/storyteller/effectcraft/MainActivity.java
+          sed -i '/btnFloatingKeyboard = findViewById/a\        btnFloatingKeyboard.setVisibility(View.GONE);' $A/java/ai/storyteller/effectcraft/MainActivity.java
+          grep -c 'cc.js' $W/index.html
+      - name: Salvar no seu repositório
+        run: |
           git config user.name "github-actions"
           git config user.email "actions@users.noreply.github.com"
           git add -A
-          git commit -m "Copia do EffectCraft mobile" || echo "nada novo"
+          git commit -m "EffectCraft com interface vertical" || echo "nada novo"
           git push
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
